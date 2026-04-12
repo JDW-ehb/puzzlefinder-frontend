@@ -1,0 +1,9 @@
+services:
+  puzzlefinder-frontend:
+    build:
+      context: .
+      args:
+        REACT_APP_API_BASE: http://localhost:5678/api
+    ports:
+      - "8080:80"
+    restart: unless-stopped
