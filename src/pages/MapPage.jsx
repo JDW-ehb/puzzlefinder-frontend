@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import GameMap from "../components/Map/GameMap";
-import { mockLocations } from "../data/locations";
 import { useGameStore } from "../store/useGameStore";
 
 function calculateDistanceMeters(start, end) {
@@ -26,19 +25,20 @@ function calculateDistanceMeters(start, end) {
 export default function MapPage() {
   const selectedLocationId = useGameStore((state) => state.selectedLocationId);
   const currentTargetId = useGameStore((state) => state.currentTargetId);
+  const locations = useGameStore((state) => state.locations);
   const userLocation = useGameStore((state) => state.userLocation);
   const locationError = useGameStore((state) => state.locationError);
   const requestLocation = useGameStore((state) => state.requestLocation);
   const theme = useGameStore((state) => state.theme);
 
   const selectedLocation = useMemo(
-    () => mockLocations.find((location) => location.id === selectedLocationId) ?? mockLocations[0],
-    [selectedLocationId]
+    () => locations.find((location) => location.id === selectedLocationId) ?? locations[0],
+    [locations, selectedLocationId]
   );
 
   const targetLocation = useMemo(
-    () => mockLocations.find((location) => location.id === currentTargetId) ?? selectedLocation,
-    [currentTargetId, selectedLocation]
+    () => locations.find((location) => location.id === currentTargetId) ?? selectedLocation,
+    [locations, currentTargetId, selectedLocation]
   );
 
   const distanceToTarget = calculateDistanceMeters(userLocation, targetLocation);

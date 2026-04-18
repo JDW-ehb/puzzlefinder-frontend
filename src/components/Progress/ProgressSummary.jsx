@@ -1,5 +1,3 @@
-import { mockLocations } from "../../data/locations";
-
 const achievementCatalog = [
   {
     id: "first-step",
@@ -17,7 +15,7 @@ const achievementCatalog = [
     id: "brussels-legend",
     title: "Brussels Legend",
     description: "Clear the whole route.",
-    unlocksAt: mockLocations.length,
+    unlocksAt: Infinity,
   },
   {
     id: "guide-reader",
@@ -27,8 +25,17 @@ const achievementCatalog = [
   },
 ];
 
-export default function ProgressSummary({ progress, unlockedLocations, currentMission }) {
-  const completionPercent = Math.round((progress.completed / progress.total) * 100);
+export default function ProgressSummary({ progress, unlockedLocations, currentMission, locations = [] }) {
+  const totalLocations = locations.length || progress.total || 1;
+  const completionPercent = Math.round((progress.completed / totalLocations) * 100);
+  const dynamicAchievements = achievementCatalog.map((achievement) =>
+    achievement.id === "brussels-legend"
+      ? {
+          ...achievement,
+          unlocksAt: totalLocations,
+        }
+      : achievement
+  );
 
   return (
     <section className="space-y-4 p-4">
@@ -73,7 +80,7 @@ export default function ProgressSummary({ progress, unlockedLocations, currentMi
       </div>
 
       <div className="grid grid-cols-1 gap-3">
-        {achievementCatalog.map((achievement) => {
+        {dynamicAchievements.map((achievement) => {
           const isUnlocked = achievement.unlocksAt === 0 || progress.completed >= achievement.unlocksAt;
 
           return (
@@ -104,7 +111,7 @@ export default function ProgressSummary({ progress, unlockedLocations, currentMi
         <div className="mt-3 space-y-3">
           {unlockedLocations.length ? (
             unlockedLocations.map((locationId) => {
-              const location = mockLocations.find((entry) => entry.id === locationId);
+              const location = locations.find((entry) => entry.id === locationId);
 
               if (!location) {
                 return null;

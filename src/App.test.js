@@ -5,8 +5,8 @@ jest.mock("./pages/ChatPage", () => () => <div>Chat Page</div>);
 jest.mock("./pages/MapPage", () => () => <div>Map Page</div>);
 jest.mock("./pages/ProgressPage", () => () => <div>Progress Page</div>);
 
-test("renders PuzzleFinder shell", () => {
+test("renders login gate when unauthenticated", () => {
   render(<App />);
   expect(screen.getByText(/PuzzleFinder/i)).toBeInTheDocument();
-  expect(screen.getByText(/Brussels quest board/i)).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /Sign in/i })).toBeInTheDocument();
 });

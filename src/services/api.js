@@ -1,47 +1,33 @@
-import { buildMissionText, getNextLocationId, getLocationById } from "../data/locations";
-
 export const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5678/api";
+export const CHAT_TIMEOUT_MS = Number(process.env.REACT_APP_CHAT_TIMEOUT_MS || 5000);
 
-const CHAT_ENDPOINT = `${API_BASE}/chat`;
-const VERIFY_PHOTO_ENDPOINT = `${API_BASE}/verify-photo`;
+const ENDPOINTS = {
+  login: `${API_BASE}/auth/login`,
+  register: `${API_BASE}/auth/register`,
+  me: `${API_BASE}/auth/me`,
+  state: `${API_BASE}/game/state`,
+  locations: `${API_BASE}/game/locations`,
+  locationPing: `${API_BASE}/game/location`,
+  progress: `${API_BASE}/game/progress`,
+  chat: `${API_BASE}/chat`,
+  verifyPhoto: `${API_BASE}/verify-photo`,
+};
 
-function delay(milliseconds) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
+function withTimeout(signal, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-function buildMockChatReply(message) {
-  const text = message.trim().toLowerCase();
-  const targetLocation = getLocationById("grand-place");
-
-  if (text.includes("where") || text.includes("map")) {
-    return {
-      reply: `The next trail point is tied to ${targetLocation.name}. Follow the city center and watch for a detailed facade.`,
-      nextMission: buildMissionText(targetLocation.id),
-      suggestedTargetId: targetLocation.id,
-    };
-  }
-
-  if (text.includes("hint") || text.includes("clue")) {
-    return {
-      reply: "Look for a landmark with strong symmetry, then check the quiet edge of the crowd.",
-      nextMission: "Use the map to compare the clue against the four Brussels locations.",
-    };
-  }
-
-  if (text.includes("photo") || text.includes("verify")) {
-    return {
-      reply: "Take a sharp photo with the landmark visible in frame. That is how the game verifies the stop.",
-    };
+  if (signal) {
+    signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
 
   return {
-    reply: "I am tracking your route. Ask for a clue, check the map, or upload a photo when you reach the location.",
+    signal: controller.signal,
+    clear: () => clearTimeout(timeout),
   };
 }
 
-async function parseJsonResponse(response) {
+async function parseResponse(response) {
   const contentType = response.headers.get("content-type") || "";
 
   if (contentType.includes("application/json")) {
@@ -49,64 +35,110 @@ async function parseJsonResponse(response) {
   }
 
   const text = await response.text();
-  return text ? { reply: text } : {};
+  return text ? { message: text } : {};
 }
 
-export async function sendMessage({ userId, message }) {
-  try {
-    const response = await fetch(CHAT_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ userId, message }),
-    });
+async function request(url, { method = "GET", token, body, signal, timeoutMs = 15000 } = {}) {
+  const timeoutControl = withTimeout(signal, timeoutMs);
+  const isFormData = body instanceof FormData;
 
-    if (!response.ok) {
-      throw new Error(`Chat request failed with status ${response.status}`);
-    }
-
-    return parseJsonResponse(response);
-  } catch (error) {
-    await delay(1200);
-    return buildMockChatReply(message);
-  }
-}
-
-function buildMockVerificationResponse(locationId) {
-  const location = getLocationById(locationId);
-  const nextLocationId = getNextLocationId(locationId);
-  const nextLocation = nextLocationId ? getLocationById(nextLocationId) : null;
-
-  return {
-    success: true,
-    message: `Correct location! ${location.name} is verified.`,
-    nextChallenge: nextLocation
-      ? `Your next challenge is ${nextLocation.name}. ${nextLocation.hint}`
-      : "You cleared the Brussels route. Ask the guide for a bonus mission.",
-    verifiedLocationId: location.id,
-    nextTargetId: nextLocation?.id ?? null,
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
   };
-}
-
-export async function verifyPhoto({ userId, photo, locationId }) {
-  const formData = new FormData();
-  formData.append("userId", userId);
-  formData.append("photo", photo);
 
   try {
-    const response = await fetch(VERIFY_PHOTO_ENDPOINT, {
-      method: "POST",
-      body: formData,
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
+      signal: timeoutControl.signal,
     });
 
+    const payload = await parseResponse(response);
+
     if (!response.ok) {
-      throw new Error(`Photo verification failed with status ${response.status}`);
+      const backendMessage = payload?.error || payload?.message;
+      throw new Error(backendMessage || `Request failed (${response.status})`);
     }
 
-    return parseJsonResponse(response);
+    return payload;
   } catch (error) {
-    await delay(1400);
-    return buildMockVerificationResponse(locationId);
+    if (error?.name === "AbortError") {
+      throw new Error("Request timed out");
+    }
+
+    throw error;
+  } finally {
+    timeoutControl.clear();
   }
+}
+
+export async function loginUser({ email, password }) {
+  return request(ENDPOINTS.login, {
+    method: "POST",
+    body: { email, password },
+  });
+}
+
+export async function registerUser({ name, email, password }) {
+  return request(ENDPOINTS.register, {
+    method: "POST",
+    body: { name, email, password },
+  });
+}
+
+export async function fetchSession(token) {
+  return request(ENDPOINTS.me, { token });
+}
+
+export async function fetchGameState(token) {
+  return request(ENDPOINTS.state, { token });
+}
+
+export async function fetchLocations(token) {
+  return request(ENDPOINTS.locations, { token });
+}
+
+export async function syncProgress({ token, progress, unlockedLocations }) {
+  return request(ENDPOINTS.progress, {
+    method: "POST",
+    token,
+    body: { progress, unlockedLocations },
+  });
+}
+
+export async function syncUserLocation({ token, location }) {
+  return request(ENDPOINTS.locationPing, {
+    method: "POST",
+    token,
+    body: location,
+  });
+}
+
+export async function sendMessage({ token, message, currentMission, currentTargetId, isGuest }) {
+  return request(ENDPOINTS.chat, {
+    method: "POST",
+    token,
+    timeoutMs: CHAT_TIMEOUT_MS,
+    body: {
+      message,
+      currentMission,
+      currentTargetId,
+      guestMode: Boolean(isGuest),
+    },
+  });
+}
+
+export async function verifyPhoto({ token, photo, locationId }) {
+  const formData = new FormData();
+  formData.append("photo", photo);
+  formData.append("locationId", locationId || "");
+
+  return request(ENDPOINTS.verifyPhoto, {
+    method: "POST",
+    token,
+    body: formData,
+    timeoutMs: 20000,
+  });
 }

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { BottomNav } from "./components/Navigation/BottomNav";
 import ChatPage from "./pages/ChatPage";
+import LoginPage from "./pages/LoginPage";
 import MapPage from "./pages/MapPage";
 import ProgressPage from "./pages/ProgressPage";
 import { useGameStore } from "./store/useGameStore";
@@ -17,13 +18,45 @@ function App() {
   const progress = useGameStore((state) => state.progress);
   const theme = useGameStore((state) => state.theme);
   const toggleTheme = useGameStore((state) => state.toggleTheme);
-  const userId = useGameStore((state) => state.userId);
+  const user = useGameStore((state) => state.user);
+  const isGuest = useGameStore((state) => state.isGuest);
+  const isAuthenticated = useGameStore((state) => state.isAuthenticated);
+  const authLoading = useGameStore((state) => state.authLoading);
+  const authInitialized = useGameStore((state) => state.authInitialized);
+  const initializeAuth = useGameStore((state) => state.initializeAuth);
+  const logout = useGameStore((state) => state.logout);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
+  useEffect(() => {
+    initializeAuth();
+  }, [initializeAuth]);
+
   const ActivePage = pages[activeTab] ?? ChatPage;
+
+  if (!authInitialized || (authLoading && !isAuthenticated)) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-slate-100 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-50">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.12),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(249,115,22,0.12),_transparent_30%),linear-gradient(180deg,_rgba(248,250,252,1),_rgba(226,232,240,1))] dark:bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.22),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(249,115,22,0.18),_transparent_30%),linear-gradient(180deg,_rgba(15,23,42,1),_rgba(2,6,23,1))]" />
+        <div className="relative flex min-h-screen items-center justify-center px-4">
+          <div className="rounded-2xl border border-slate-300/70 bg-white/75 px-5 py-4 text-sm text-slate-700 shadow-xl dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-200">
+            Connecting to backend...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-slate-100 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-50">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.12),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(249,115,22,0.12),_transparent_30%),linear-gradient(180deg,_rgba(248,250,252,1),_rgba(226,232,240,1))] dark:bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.22),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(249,115,22,0.18),_transparent_30%),linear-gradient(180deg,_rgba(15,23,42,1),_rgba(2,6,23,1))]" />
+        <LoginPage />
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-100 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-50">
@@ -38,14 +71,28 @@ function App() {
               <p className="text-xs font-semibold uppercase tracking-[0.35em] text-cyan-300/80">PuzzleFinder</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white lg:text-3xl">Brussels quest board</h1>
               <p className="mt-1 text-sm text-slate-700 dark:text-slate-300 lg:text-base">AI guide, live map clues, and photo verification in one flow.</p>
+              {isGuest ? (
+                <p className="mt-2 inline-block rounded-full border border-amber-300/40 bg-amber-300/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-200">
+                  Guest mode: data is not saved
+                </p>
+              ) : null}
             </div>
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="rounded-2xl border border-slate-300 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-cyan-300/40 hover:text-cyan-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:text-cyan-200"
-            >
-              {theme === "dark" ? "Light" : "Dark"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="rounded-2xl border border-slate-300 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-cyan-300/40 hover:text-cyan-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:text-cyan-200"
+              >
+                {theme === "dark" ? "Light" : "Dark"}
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                className="rounded-2xl border border-slate-300 bg-white/90 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-rose-300/50 hover:text-rose-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:text-rose-300"
+              >
+                Logout
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -54,11 +101,11 @@ function App() {
               <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{currentMission}</p>
             </div>
             <div className="rounded-2xl bg-slate-100/95 px-3 py-3 dark:bg-slate-900/70">
-              <p className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-400">Progress</p>
+              <p className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-400">Account</p>
               <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
                 {progress.completed}/{progress.total} found
               </p>
-              <p className="mt-1 text-xs text-slate-400 break-all">{userId}</p>
+              <p className="mt-1 text-xs text-slate-400 break-all">{isGuest ? "Guest Explorer (unsaved)" : user?.email || user?.name || "Authenticated player"}</p>
             </div>
           </div>
 
