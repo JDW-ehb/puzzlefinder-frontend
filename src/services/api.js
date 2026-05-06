@@ -1,5 +1,5 @@
-export const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5678/api";
-export const CHAT_TIMEOUT_MS = Number(process.env.REACT_APP_CHAT_TIMEOUT_MS || 5000);
+export const API_BASE = process.env.REACT_APP_API_BASE || "http://localhost:5678/webhook";
+export const CHAT_TIMEOUT_MS = Number(process.env.REACT_APP_CHAT_TIMEOUT_MS || 30000);
 
 const ENDPOINTS = {
   login: `${API_BASE}/auth/login`,
@@ -131,14 +131,26 @@ export async function sendMessage({ token, message, currentMission, currentTarge
 }
 
 export async function verifyPhoto({ token, photo, locationId }) {
-  const formData = new FormData();
-  formData.append("photo", photo);
-  formData.append("locationId", locationId || "");
+  const base64 = await new Promise((resolve, reject) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    img.onload = () => {
+      const maxSize = 512;
+      let w = img.width, h = img.height;
+      if (w > h && w > maxSize) { h = h * maxSize / w; w = maxSize; }
+      else if (h > maxSize) { w = w * maxSize / h; h = maxSize; }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.7).split(',')[1]);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(photo);
+  });
 
   return request(ENDPOINTS.verifyPhoto, {
     method: "POST",
     token,
-    body: formData,
-    timeoutMs: 20000,
+    body: { photo: base64, locationId: locationId || "" },
+    timeoutMs: 60000,
   });
 }
