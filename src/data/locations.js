@@ -1,53 +1,65 @@
-export const mockLocations = [
-  {
-    id: "grand-place",
-    name: "Grand Place",
-    lat: 50.8467,
-    lng: 4.3525,
-    hint: "Look for a carved detail that catches the afternoon light.",
-    description: "Historic square with ornate guild houses and a perfect first clue.",
-  },
-  {
-    id: "mont-des-arts",
-    name: "Mont des Arts",
-    lat: 50.8428,
-    lng: 4.3568,
-    hint: "Search the steps where the city opens toward the horizon.",
-    description: "A cultural ridge with terraces, gardens, and an easy landmark to scan.",
-  },
-  {
-    id: "atomium",
-    name: "Atomium",
-    lat: 50.8949,
-    lng: 4.3416,
-    hint: "A shiny structure with a geometry that is hard to miss.",
-    description: "An iconic Brussels landmark that makes a bold mid-game target.",
-  },
-  {
-    id: "cinquantenaire",
-    name: "Parc du Cinquantenaire",
-    lat: 50.8436,
-    lng: 4.3910,
-    hint: "Find the arch, then look for the quieter path nearby.",
-    description: "A large park with enough space to hide a more subtle puzzle trail.",
-  },
-];
-
-export function getLocationById(locationId) {
-  return mockLocations.find((location) => location.id === locationId) ?? mockLocations[0];
+function toNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
 }
 
-export function getNextLocationId(locationId) {
-  const currentIndex = mockLocations.findIndex((location) => location.id === locationId);
-  if (currentIndex === -1) {
-    return mockLocations[0]?.id ?? null;
+export function normalizeLocations(payload) {
+  const sourceLocations = Array.isArray(payload) ? payload : payload?.locations;
+
+  if (!Array.isArray(sourceLocations)) {
+    return [];
   }
 
-  const nextLocation = mockLocations[currentIndex + 1];
+  return sourceLocations
+    .map((entry, index) => {
+      const idValue = entry?.id ?? entry?.locationID ?? entry?.step_number ?? entry?.stepNumber ?? index;
+      const id = String(idValue);
+      const name = entry?.name?.trim?.() || `Mission ${index + 1}`;
+      const hint = entry?.clue?.trim?.() || entry?.base_clue?.trim?.() || entry?.hint?.trim?.() || "";
+      const description = entry?.description?.trim?.() || "";
+      const lat = toNumber(entry?.lat ?? entry?.latitude);
+      const lng = toNumber(entry?.lng ?? entry?.longitude);
+
+      if (!id || !name) {
+        return null;
+      }
+
+      return {
+        id,
+        name,
+        lat,
+        lng,
+        hint,
+        description,
+      };
+    })
+    .filter(Boolean);
+}
+
+export function getLocationById(locationId, locations = []) {
+  const resolvedLocations = Array.isArray(locations) ? locations : [];
+  return resolvedLocations.find((location) => String(location.id) === String(locationId)) ?? resolvedLocations[0] ?? null;
+}
+
+export function getNextLocationId(locationId, locations = []) {
+  const resolvedLocations = Array.isArray(locations) ? locations : [];
+  const currentIndex = resolvedLocations.findIndex((location) => String(location.id) === String(locationId));
+
+  if (currentIndex === -1) {
+    return resolvedLocations[0]?.id ?? null;
+  }
+
+  const nextLocation = resolvedLocations[currentIndex + 1];
   return nextLocation?.id ?? null;
 }
 
-export function buildMissionText(locationId) {
-  const location = getLocationById(locationId);
-  return `Head to ${location.name}. ${location.hint}`;
+export function buildMissionText(location, locations = []) {
+  const resolvedLocation = typeof location === "object" && location ? location : getLocationById(location, locations);
+
+  if (!resolvedLocation) {
+    return "Mission data is loading from the webhook...";
+  }
+
+  const clue = resolvedLocation.hint || resolvedLocation.clue || resolvedLocation.base_clue || "Follow the webhook clue.";
+  return `Head to ${resolvedLocation.name}. ${clue}`;
 }

@@ -116,7 +116,7 @@ export async function syncUserLocation({ token, location }) {
   });
 }
 
-export async function sendMessage({ token, message, currentMission, currentTargetId, isGuest }) {
+export async function sendMessage({ token, message, currentMission, currentTargetId, currentStep, isGuest }) {
   return request(ENDPOINTS.chat, {
     method: "POST",
     token,
@@ -125,6 +125,7 @@ export async function sendMessage({ token, message, currentMission, currentTarge
       message,
       currentMission,
       currentTargetId,
+      currentStep,
       guestMode: Boolean(isGuest),
     },
   });

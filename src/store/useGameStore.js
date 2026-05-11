@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { buildMissionText, mockLocations } from "../data/locations";
+import { buildMissionText, getLocationById, normalizeLocations } from "../data/locations";
 import {
   fetchGameState,
   fetchLocations,
@@ -21,12 +21,20 @@ function createMessage(sender, text) {
   };
 }
 
-function getInitialMission() {
-  return buildMissionText(mockLocations[0].id);
-}
+function getGameStateForLocations(locations = [], currentTargetId = null) {
+  const resolvedLocations = Array.isArray(locations) ? locations : [];
+  const targetLocation = getLocationById(currentTargetId, resolvedLocations) || resolvedLocations[0] || null;
 
-function getInitialTargetId() {
-  return mockLocations[0]?.id ?? null;
+  return {
+    currentMission: buildMissionText(targetLocation, resolvedLocations),
+    currentTargetId: targetLocation?.id ?? null,
+    locations: resolvedLocations,
+    progress: {
+      completed: 0,
+      total: resolvedLocations.length,
+    },
+    selectedLocationId: targetLocation?.id ?? null,
+  };
 }
 
 const initialChatMessages = [
@@ -37,17 +45,12 @@ const initialChatMessages = [
 ];
 
 function getResettableGameState() {
+  const resetLocations = [];
+
   return {
     activeTab: "chat",
-    currentMission: getInitialMission(),
-    currentTargetId: getInitialTargetId(),
-    locations: mockLocations,
-    progress: {
-      completed: 0,
-      total: mockLocations.length,
-    },
+    ...getGameStateForLocations(resetLocations),
     unlockedLocations: [],
-    selectedLocationId: getInitialTargetId(),
     chatMessages: initialChatMessages,
     isChatSending: false,
     isVerifyingPhoto: false,
@@ -68,15 +71,8 @@ export const useGameStore = create(
       authError: null,
       theme: "dark",
       activeTab: "chat",
-      currentMission: getInitialMission(),
-      currentTargetId: getInitialTargetId(),
-      locations: mockLocations,
-      progress: {
-        completed: 0,
-        total: mockLocations.length,
-      },
+      ...getGameStateForLocations([]),
       unlockedLocations: [],
-      selectedLocationId: getInitialTargetId(),
       chatMessages: initialChatMessages,
       isChatSending: false,
       isVerifyingPhoto: false,
@@ -86,9 +82,43 @@ export const useGameStore = create(
 
       initializeAuth: async () => {
         const token = get().token;
+        const applyLocations = (locations, authState = {}) => {
+          const resolvedLocations = Array.isArray(locations) ? locations : [];
+          const targetId = authState.currentTargetId ?? authState.selectedLocationId ?? null;
+          const gameState = getGameStateForLocations(resolvedLocations, targetId);
+
+          set({
+            authLoading: false,
+            authInitialized: true,
+            authError: null,
+            locations: resolvedLocations,
+            currentMission: gameState.currentMission,
+            currentTargetId: gameState.currentTargetId,
+            progress: {
+              ...gameState.progress,
+              ...(authState?.progress || {}),
+              total: resolvedLocations.length,
+            },
+            unlockedLocations: Array.isArray(authState?.unlockedLocations) ? authState.unlockedLocations : [],
+            selectedLocationId: gameState.selectedLocationId,
+            chatMessages: Array.isArray(authState?.chatMessages) && authState.chatMessages.length ? authState.chatMessages : initialChatMessages,
+            isAuthenticated: Boolean(token),
+            isGuest: false,
+            user: authState?.user ?? (token ? get().user : null),
+          });
+        };
 
         if (!token) {
-          set({ authInitialized: true, isAuthenticated: false, user: null, isGuest: false });
+          const locationsResponse = await fetchLocations();
+          applyLocations(normalizeLocations(locationsResponse), {
+            user: null,
+            progress: {
+              completed: 0,
+            },
+            unlockedLocations: [],
+            chatMessages: initialChatMessages,
+          });
+          set({ isAuthenticated: false, isGuest: false, user: null });
           return;
         }
 
@@ -102,17 +132,18 @@ export const useGameStore = create(
           ]);
 
           const user = sessionResult.status === "fulfilled" ? sessionResult.value.user || sessionResult.value : null;
-          const gameState = stateResult.status === "fulfilled" ? stateResult.value : null;
+          const backendGameState = stateResult.status === "fulfilled" ? stateResult.value : null;
           const locationsResponse = locationsResult.status === "fulfilled" ? locationsResult.value : null;
 
           if (!user) {
             throw new Error("Session expired. Please log in again.");
           }
 
-          const backendLocations = locationsResponse?.locations || locationsResponse;
+          const backendLocations = normalizeLocations(locationsResponse);
 
           set((state) => {
-            const locations = Array.isArray(backendLocations) && backendLocations.length ? backendLocations : state.locations;
+            const locations = backendLocations.length ? backendLocations : state.locations;
+            const gameState = getGameStateForLocations(locations, backendGameState?.currentTargetId ?? backendGameState?.selectedLocationId ?? null);
 
             return {
               authLoading: false,
@@ -122,15 +153,16 @@ export const useGameStore = create(
               user,
               authError: null,
               locations,
-              currentMission: gameState?.currentMission || state.currentMission,
-              currentTargetId: gameState?.currentTargetId || state.currentTargetId,
-              progress: gameState?.progress || {
-                ...state.progress,
+              currentMission: gameState.currentMission,
+              currentTargetId: gameState.currentTargetId,
+              progress: {
+                ...(backendGameState?.progress || {}),
+                completed: backendGameState?.progress?.completed ?? state.progress.completed,
                 total: locations.length,
               },
-              unlockedLocations: gameState?.unlockedLocations || state.unlockedLocations,
-              selectedLocationId: gameState?.selectedLocationId || state.selectedLocationId || state.currentTargetId,
-              chatMessages: Array.isArray(gameState?.chatMessages) && gameState.chatMessages.length ? gameState.chatMessages : state.chatMessages,
+              unlockedLocations: Array.isArray(backendGameState?.unlockedLocations) ? backendGameState.unlockedLocations : state.unlockedLocations,
+              selectedLocationId: gameState.selectedLocationId,
+              chatMessages: Array.isArray(backendGameState?.chatMessages) && backendGameState.chatMessages.length ? backendGameState.chatMessages : state.chatMessages,
             };
           });
         } catch (error) {
@@ -209,8 +241,17 @@ export const useGameStore = create(
       },
 
       signInAsGuest: () => {
+        const guestLocations = get().locations?.length ? get().locations : [];
+
         set({
-          ...getResettableGameState(),
+          ...getGameStateForLocations(guestLocations),
+          activeTab: "chat",
+          unlockedLocations: [],
+          chatMessages: initialChatMessages,
+          isChatSending: false,
+          isVerifyingPhoto: false,
+          userLocation: null,
+          locationError: null,
           token: null,
           user: {
             id: "guest",
@@ -226,8 +267,17 @@ export const useGameStore = create(
       },
 
       logout: () => {
+        const resetLocations = get().locations?.length ? get().locations : [];
+
         set({
-          ...getResettableGameState(),
+          ...getGameStateForLocations(resetLocations),
+          activeTab: "chat",
+          unlockedLocations: [],
+          chatMessages: initialChatMessages,
+          isChatSending: false,
+          isVerifyingPhoto: false,
+          userLocation: null,
+          locationError: null,
           token: null,
           user: null,
           isGuest: false,
@@ -248,11 +298,11 @@ export const useGameStore = create(
       setSelectedLocationId: (selectedLocationId) => set({ selectedLocationId }),
 
       setCurrentTargetId: (currentTargetId) =>
-        set({
+        set((state) => ({
           currentTargetId,
           selectedLocationId: currentTargetId,
-          currentMission: currentTargetId ? buildMissionText(currentTargetId) : get().currentMission,
-        }),
+          currentMission: buildMissionText(getLocationById(currentTargetId, state.locations), state.locations),
+        })),
 
       requestLocation: async () => {
         if (!navigator.geolocation) {
@@ -273,7 +323,19 @@ export const useGameStore = create(
 
               const token = get().token;
               if (token) {
-                syncUserLocation({ token, location: nextLocation }).catch(() => {
+                const currentTargetId = get().currentTargetId;
+                const userId = get().user?.id ?? null;
+                const currentStep = get().progress?.completed ?? 0;
+
+                syncUserLocation({
+                  token,
+                  location: {
+                    ...nextLocation,
+                    currentTargetId,
+                    currentStep,
+                    userId,
+                  },
+                }).catch(() => {
                   set({ locationError: "Location shared, but backend location sync failed." });
                 });
               }
@@ -303,6 +365,7 @@ export const useGameStore = create(
         const token = get().token;
         const currentMission = get().currentMission;
         const currentTargetId = get().currentTargetId;
+        const currentStep = get().progress?.completed ?? 0;
         const isGuest = get().isGuest;
         const userMessage = createMessage("user", trimmedMessage);
 
@@ -317,16 +380,18 @@ export const useGameStore = create(
             message: trimmedMessage,
             currentMission,
             currentTargetId,
+            currentStep,
             isGuest,
           });
           const replyText = response.reply || response.message || "The guide is thinking...";
+          const nextTargetId = response.suggestedTargetId ?? response.currentTargetId ?? response.currentStep ?? null;
 
           set((state) => ({
             chatMessages: [...state.chatMessages, createMessage("ai", replyText)],
             isChatSending: false,
-            currentMission: response.nextMission || state.currentMission,
-            currentTargetId: response.suggestedTargetId || state.currentTargetId,
-            selectedLocationId: response.suggestedTargetId || state.selectedLocationId,
+            currentMission: response.nextMission || response.currentMission || state.currentMission,
+            currentTargetId: nextTargetId || state.currentTargetId,
+            selectedLocationId: nextTargetId || state.selectedLocationId,
           }));
 
           return response;
@@ -353,24 +418,55 @@ export const useGameStore = create(
 
         try {
           const response = await verifyPhoto({ token, photo, locationId: currentTargetId });
-          const nextTargetId = response.nextTargetId ?? null;
+          const isVerified = Boolean(response?.success ?? response?.verified);
 
-          set((state) => ({
-            isVerifyingPhoto: false,
-            progress: {
-              ...state.progress,
-              completed: currentTargetId && !state.unlockedLocations.includes(currentTargetId)
-                ? state.progress.completed + 1
-                : state.progress.completed,
-            },
-            unlockedLocations:
-              currentTargetId && !state.unlockedLocations.includes(currentTargetId)
-                ? [...state.unlockedLocations, currentTargetId]
-                : state.unlockedLocations,
-            currentMission: response.nextChallenge || response.nextMission || state.currentMission,
-            currentTargetId: nextTargetId,
-            selectedLocationId: nextTargetId || state.selectedLocationId,
-          }));
+          console.log("[submitPhotoVerification] Response:", response);
+          console.log("[submitPhotoVerification] isVerified:", isVerified);
+          console.log("[submitPhotoVerification] currentTargetId:", currentTargetId);
+
+          set((state) => {
+            if (!isVerified) {
+              console.log("[submitPhotoVerification] Verification failed, not advancing");
+              return {
+                isVerifyingPhoto: false,
+              };
+            }
+
+            const currentId = currentTargetId != null ? String(currentTargetId) : null;
+            const currentIndex = currentId
+              ? state.locations.findIndex((location) => String(location.id) === currentId)
+              : -1;
+            const nextTargetId =
+              response.nextTargetId ??
+              state.locations[currentIndex + 1]?.id ??
+              state.currentTargetId;
+            const nextLocation = getLocationById(nextTargetId, state.locations);
+            const nextMission =
+              response.nextChallenge ||
+              response.nextMission ||
+              buildMissionText(nextLocation, state.locations) ||
+              state.currentMission;
+
+            const isNewLocation = currentId && !state.unlockedLocations.includes(currentId);
+
+            console.log("[submitPhotoVerification] isNewLocation:", isNewLocation);
+            console.log("[submitPhotoVerification] currentId:", currentId);
+            console.log("[submitPhotoVerification] unlockedLocations before:", state.unlockedLocations);
+            console.log("[submitPhotoVerification] nextTargetId:", nextTargetId);
+            console.log("[submitPhotoVerification] nextMission:", nextMission);
+
+            return {
+              isVerifyingPhoto: false,
+              progress: {
+                ...state.progress,
+                completed: isNewLocation ? state.progress.completed + 1 : state.progress.completed,
+              },
+              unlockedLocations: isNewLocation ? [...state.unlockedLocations, currentId] : state.unlockedLocations,
+              currentMission: nextMission,
+              currentTargetId: nextTargetId,
+              selectedLocationId: nextTargetId || state.selectedLocationId,
+            };
+          });
 
           const snapshot = get();
           if (token) {

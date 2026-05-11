@@ -65,12 +65,16 @@ function UserLocationMarker({ userLocation }) {
 }
 
 export default function GameMap({ targetLocation, userLocation, compact = false, theme = "dark" }) {
+  const hasTargetCoords = Boolean(
+    targetLocation && Number.isFinite(targetLocation.lat) && Number.isFinite(targetLocation.lng)
+  );
+
   const center = useMemo(() => {
     if (userLocation) {
       return [userLocation.lat, userLocation.lng];
     }
 
-    if (targetLocation) {
+    if (hasTargetCoords) {
       return [targetLocation.lat, targetLocation.lng];
     }
 
@@ -93,7 +97,7 @@ export default function GameMap({ targetLocation, userLocation, compact = false,
 
         <UserLocationMarker userLocation={userLocation} />
 
-        {targetLocation ? (
+        {hasTargetCoords ? (
           <Circle
             center={[targetLocation.lat, targetLocation.lng]}
             radius={180}

@@ -65,7 +65,7 @@ export default function ProgressSummary({ progress, unlockedLocations, currentMi
           </div>
           <div className="rounded-2xl bg-slate-950/70 px-3 py-3">
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Total</p>
-            <p className="mt-1 text-lg font-semibold text-white">{progress.total}</p>
+            <p className="mt-1 text-lg font-semibold text-white">{totalLocations}</p>
           </div>
           <div className="rounded-2xl bg-slate-950/70 px-3 py-3">
             <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Unlocked</p>

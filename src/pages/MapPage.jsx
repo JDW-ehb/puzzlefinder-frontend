@@ -31,14 +31,19 @@ export default function MapPage() {
   const requestLocation = useGameStore((state) => state.requestLocation);
   const theme = useGameStore((state) => state.theme);
 
+  const mapLocations = useMemo(
+    () => locations.filter((location) => Number.isFinite(location.lat) && Number.isFinite(location.lng)),
+    [locations]
+  );
+
   const selectedLocation = useMemo(
-    () => locations.find((location) => location.id === selectedLocationId) ?? locations[0],
-    [locations, selectedLocationId]
+    () => mapLocations.find((location) => location.id === selectedLocationId) ?? mapLocations[0] ?? null,
+    [mapLocations, selectedLocationId]
   );
 
   const targetLocation = useMemo(
-    () => locations.find((location) => location.id === currentTargetId) ?? selectedLocation,
-    [locations, currentTargetId, selectedLocation]
+    () => mapLocations.find((location) => location.id === currentTargetId) ?? selectedLocation,
+    [mapLocations, currentTargetId, selectedLocation]
   );
 
   const distanceToTarget = calculateDistanceMeters(userLocation, targetLocation);

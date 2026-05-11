@@ -16,6 +16,7 @@ function App() {
   const activeTab = useGameStore((state) => state.activeTab);
   const currentMission = useGameStore((state) => state.currentMission);
   const progress = useGameStore((state) => state.progress);
+  const locations = useGameStore((state) => state.locations);
   const theme = useGameStore((state) => state.theme);
   const toggleTheme = useGameStore((state) => state.toggleTheme);
   const user = useGameStore((state) => state.user);
@@ -35,6 +36,7 @@ function App() {
   }, [initializeAuth]);
 
   const ActivePage = pages[activeTab] ?? ChatPage;
+  const totalLocations = locations.length || progress.total;
 
   if (!authInitialized || (authLoading && !isAuthenticated)) {
     return (
@@ -103,7 +105,7 @@ function App() {
             <div className="rounded-2xl bg-slate-100/95 px-3 py-3 dark:bg-slate-900/70">
               <p className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-400">Account</p>
               <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">
-                {progress.completed}/{progress.total} found
+                {progress.completed}/{totalLocations} found
               </p>
               <p className="mt-1 text-xs text-slate-400 break-all">{isGuest ? "Guest Explorer (unsaved)" : user?.email || user?.name || "Authenticated player"}</p>
             </div>
