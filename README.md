@@ -1,116 +1,100 @@
-# PuzzleFinder Frontend
+# Puzzle Finder - Frontend
 
-Mobile-first React MVP for PuzzleFinder, an AI-guided location puzzle game in Brussels.
+The official React-based frontend for the Puzzle Finder AI scavenger hunt. This application provides players with a mobile-friendly interface to chat with "Control" (the AI handler), view their current objective on an interactive map, upload verification photos, and track their game progress.
 
-## Stack
+## Important Prerequisite
 
-- React
-- Tailwind CSS
-- Zustand
-- react-leaflet / Leaflet
-- Fetch-based API layer for n8n webhooks
+For the Docker stack to build and network correctly, you **must** clone the backend `Puzzle-finder` repository into the **same parent directory** as this frontend repository.
 
-## What It Includes
+Your folder structure should look exactly like this:
 
-- WhatsApp-style chat with AI guide responses
-- Leaflet map with Brussels locations and target highlighting
-- Photo upload verification flow with preview and loading states
-- Progress tracking, badges, and mission display
-- Bottom navigation for Chat, Map, and Progress
+```text
+parent-folder/
+├── Puzzle-finder/          # The backend repository (N8N, MySQL, Ollama)
+└── puzzlefinder-frontend/  # This frontend repository
+```
 
-## Local Development
+## Tech Stack
 
-Install dependencies and start the app:
+- Framework: React 18
+- Styling: Tailwind CSS
+- State Management: Zustand
+- Icons: Lucide React
+- Routing: React Router v6
+- Deployment: Nginx (via Docker multi-stage build)
+
+## Getting Started
+
+1. Environment Setup
+
+Copy the example environment file and configure it to point to your N8N backend instance.
+
+```bash
+cp .env.example .env
+```
+
+Ensure your `.env` contains the correct API base URL. If you are running the backend stack locally with the default settings, it should look like this:
+
+```text
+REACT_APP_API_BASE=http://localhost:5678/webhook
+```
+
+2. Running Locally (Development Mode)
+
+If you want to run the frontend outside of Docker with hot-reloading for UI development:
 
 ```bash
 npm install
 npm start
 ```
 
-Build for production:
+The app will be available at http://localhost:3000.
+
+3. Running with Docker (Production Mode)
+
+The easiest way to run the frontend is to use the master `docker-compose.yml` located in the backend (`Puzzle-finder`) repository. Running `docker compose up -d` from the backend will automatically build this frontend's Dockerfile and serve it.
+
+If you need to run the frontend container in isolation using its own `docker-compose.yml`:
 
 ```bash
-npm run build
+# Note: The backend must be running first so the 'puzzle-net' network exists
+docker compose up -d --build
 ```
 
-Run tests:
-
-```bash
-npm test
-```
-
-## Docker
-
-Build and run the production container:
-
-```bash
-docker compose up --build
-```
-
-Open the app at http://localhost:8080.
-
-If your n8n API is not on the default URL, update `REACT_APP_API_BASE` in `docker-compose.yml` or pass a different build arg.
-
-## API Configuration
-
-By default the frontend uses:
-
-```text
-http://localhost:5678/api
-```
-
-Set `REACT_APP_API_BASE` if your n8n webhooks live somewhere else.
-
-You can also configure chat timeout behavior:
-
-```text
-REACT_APP_CHAT_TIMEOUT_MS=5000
-```
-
-If chat receives no response within 5 seconds (or your configured timeout), the UI posts:
-
-```text
-Error: AI is down right now. Please try again in a few seconds.
-```
-
-## Required Backend Endpoints
-
-The frontend now expects real backend endpoints for all core logic (no mock fallback for chat/photo verification):
-
-- `POST /auth/login`
-	- body: `{ email, password }`
-	- response: `{ token }` or `{ accessToken }`
-- `POST /auth/register`
-	- body: `{ name, email, password }`
-	- response: `{ token }` or `{ accessToken }`
-- `GET /auth/me`
-	- header: `Authorization: Bearer <token>`
-	- response: `{ user: { id, email, ... } }` or user object
-- `GET /game/state`
-	- response: `{ currentMission, currentTargetId, progress, unlockedLocations, selectedLocationId, chatMessages }`
-- `GET /game/locations`
-	- response: `{ locations: [...] }` or `[...]`
-- `POST /game/location`
-	- body: `{ lat, lng, accuracy }`
-- `POST /game/progress`
-	- body: `{ progress, unlockedLocations }`
-- `POST /chat`
-	- body: `{ message, currentMission, currentTargetId, guestMode }`
-	- response: `{ reply, nextMission?, suggestedTargetId? }`
-- `POST /verify-photo`
-	- multipart form data: `photo`, `locationId`
-	- response: `{ success, message, nextChallenge?, nextMission?, nextTargetId? }`
+The app will be served via Nginx at http://localhost:8080.
 
 ## Project Structure
 
-- `src/App.jsx` - app shell and layout
-- `src/pages/` - Chat, Map, and Progress screens
-- `src/components/` - reusable UI pieces
-- `src/store/useGameStore.js` - auth + global game state + backend sync
-- `src/services/api.js` - REST wrapper with auth headers and timeouts
+```
+src/
+├── components/
+│   ├── Chat/         # Chat composer and message list
+│   ├── Map/          # Interactive objective map
+│   ├── Navigation/   # Mobile bottom navigation bar
+│   ├── Progress/     # Game stats and unlocks summary
+│   └── Upload/       # Photo verification logic
+├── data/             # Static location definitions
+├── pages/            # Main route views (Chat, Map, Progress, Login)
+├── services/         # API integration with N8N webhooks
+├── store/            # Zustand global state (useGameStore)
+└── App.js            # Main application router and layout wrapper
+```
 
-## Guest Mode
+## Authentication Flow
 
-- The login screen now includes `Sign in as Guest`.
-- Guest users can access the same gameplay flow, but account features are limited.
-- Guest state is intentionally not persisted, so progress/chat data resets when the session ends or page reloads.
+The frontend relies on token-based authentication generated by the N8N backend workflows. When a player logs in or registers, the token is stored locally and automatically attached to the `Authorization` header (`Bearer <token>`) for all subsequent API calls (chatting, fetching game state, or uploading photos).
+
+## Required Backend Endpoints
+
+The frontend expects the following endpoints (these are implemented as N8N workflows in the backend repo):
+
+- `POST /auth/login` — body: `{ email, password }` → response: `{ token }`
+- `POST /auth/register` — body: `{ name, email, password }` → response: `{ token }`
+- `GET /auth/me` — header: `Authorization: Bearer <token>` → response: `{ user }`
+- `GET /game/state` — response: `{ currentMission, currentTargetId, progress, unlockedLocations, selectedLocationId, chatMessages }`
+- `GET /game/locations` — response: `{ locations: [...] }`
+- `POST /game/location` — body: `{ lat, lng, accuracy }`
+- `POST /game/progress` — body: `{ progress, unlockedLocations }`
+- `POST /chat` — body: `{ message, currentMission, currentTargetId, guestMode }` → response: `{ reply, nextMission?, suggestedTargetId? }`
+- `POST /verify-photo` — multipart form data: `photo`, `locationId` → response: `{ success, message, nextChallenge?, nextMission?, nextTargetId? }`
+
